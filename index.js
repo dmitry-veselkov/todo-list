@@ -21,10 +21,9 @@
         element.appendChild(children);
     }
 
-    if (callbacks)
-    {
+    if (callbacks) {
         callbacks.forEach(callback => {
-            element.addEventListener(callback.trigger, () => callback.method())
+            element.addEventListener(callback.trigger, (event) => callback.method(event))
         })
     }
 
@@ -48,9 +47,55 @@ class Component {
 }
 
 class Task {
-    constructor(title, isDone) {
+    constructor(id, title, taskService) {
+        this.id = id;
         this.title = title;
-        this.isDone = isDone;
+        this.ts = taskService;
+        this._state = {
+            deleteCount: 0,
+        }
+    }
+
+    render() {
+        return createElement("li", [], [
+            createElement("input", {type: "checkbox"}, [], [
+                {trigger: 'change', method: (event) => this.ts.complete(this.id, event.target)}
+            ]),
+            createElement("label", {id: `taskId_${this.id}`}, this.title),
+            createElement("button", {id: `btnId_${this.id}`}, "🗑️", [
+                {trigger: 'click', method: (event) => this.ts.removeTask(this.id, this._state)}
+            ])
+        ])
+    }
+}
+
+class TaskService {
+    constructor(state, update) {
+        this._state = state;
+        this.update = update;
+    }
+
+    onAddTask() {
+        const id = this._state.currentTaskIndex;
+        this._state.todos.push(new Task(id, this._state.currentTitle, this));
+        this._state.currentTaskIndex++;
+        this.update();
+    }
+
+    complete(id, target) {
+        const label = document.getElementById(`taskId_${id}`);
+        label.style.color = target.checked ? 'lightgray' : 'black';
+    }
+
+    removeTask(id, taskState) {
+        if (taskState.deleteCount === 0) {
+            taskState.deleteCount++;
+            document.getElementById(`btnId_${id}`).style.backgroundColor = 'red';
+        }
+        else {
+            this._state.todos = this._state.todos.filter(task => task.id !== id);
+            this.update();
+        }
     }
 }
 
@@ -58,23 +103,25 @@ class TodoList extends Component {
     constructor() {
         super();
         this._state = {
-            todos: [
-                new Task('Сделать домашку', false),
-                new Task('Сделать практику', false),
-                new Task('Пойти домой', false),
-            ],
+            currentTaskIndex: 3,
+            todos: [],
             currentTitle: ''
         }
+        this._taskService = new TaskService(this._state, () => this.update());
+
+        this.init();
+    }
+
+    init() {
+        this._state.todos = [
+            new Task(0, 'Сделать домашку', this._taskService),
+            new Task(1, 'Сделать практику', this._taskService),
+            new Task(2, 'Пойти домой', this._taskService),
+        ];
     }
 
     _renderTasksList() {
-        const children = this._state.todos.map(task => {
-            return createElement("li", {}, [
-                createElement("input", {type: "checkbox"}),
-                createElement("label", {}, task.title),
-                createElement("button", {}, "🗑️")
-            ])
-        })
+        const children = this._state.todos.map(task => task.render())
 
         return createElement("ul", {id: "todos"}, children)
     }
@@ -89,16 +136,11 @@ class TodoList extends Component {
                     placeholder: "Задание",
                 }, null, [{trigger: 'input', method: () => this.onAddInputChange()}]),
                 createElement("button", {id: "add-btn"}, "+", [
-                    {trigger: 'click', method: () => this.onAddTask()}
+                    {trigger: 'click', method: () => this._taskService.onAddTask()}
                 ]),
             ]),
             this._renderTasksList()
         ]);
-    }
-
-    onAddTask() {
-        this._state.todos.push(new Task(this._state.currentTitle, false));
-        this.update();
     }
 
     onAddInputChange() {
